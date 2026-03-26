@@ -12,7 +12,6 @@ import {
   signInWithPopup,
   GoogleAuthProvider
 } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
-import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBTyPvvKam6hVF_P5wrORdg0_LhE8H-gI8",
@@ -27,15 +26,21 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
-const analytics = getAnalytics(app);
+const isFileProtocol = window.location.protocol === "file:";
 
 const form = document.getElementById("garageForm");
 const status = document.getElementById("status");
 
 // Helper: sign in with Google if not already signed in
 function signInIfNeeded() {
+  if (auth.currentUser) {
+    return Promise.resolve(auth.currentUser);
+  }
+
   return new Promise((resolve, reject) => {
-    onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe();
+
       if (user) {
         resolve(user);
       } else {
@@ -48,18 +53,52 @@ function signInIfNeeded() {
   });
 }
 
+if (!form || !status) {
+  throw new Error("Register form elements were not found on the page.");
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   status.textContent = "";
 
   try {
+    if (isFileProtocol) {
+      status.textContent = "Open this page from http://localhost, not directly as a file, before signing in.";
+      return;
+    }
+
     const user = await signInIfNeeded();
     const name = document.getElementById("name").value.trim();
     const address = document.getElementById("address").value.trim();
-    const totalSpots = Number(document.getElementById("totalSpots").value);
-    const availableSpots = Number(document.getElementById("availableSpots").value);
+    const totalSpots = Number.parseInt(document.getElementById("totalSpots").value, 10);
+    const availableSpots = Number.parseInt(document.getElementById("availableSpots").value, 10);
     const pricePerHour = Number(document.getElementById("pricePerHour").value);
+
+    if (!name || !address) {
+      status.textContent = "Please enter a lot name and address.";
+      return;
+    }
+
+    if (!Number.isInteger(totalSpots) || totalSpots <= 0) {
+      status.textContent = "Total spots must be a whole number greater than 0.";
+      return;
+    }
+
+    if (!Number.isInteger(availableSpots) || availableSpots < 0) {
+      status.textContent = "Available spots must be a whole number 0 or greater.";
+      return;
+    }
+
+    if (availableSpots > totalSpots) {
+      status.textContent = "Available spots cannot be greater than total spots.";
+      return;
+    }
+
+    if (Number.isNaN(pricePerHour) || pricePerHour < 0) {
+      status.textContent = "Price per hour must be 0 or greater.";
+      return;
+    }
 
     // Geocode address to get latitude and longitude
     const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`;
@@ -91,6 +130,17 @@ form.addEventListener("submit", async (e) => {
     form.reset();
   } catch (error) {
     console.error(error);
+
+    if (error?.code === "auth/unauthorized-domain") {
+      status.textContent = "Google sign-in is blocked for this domain. Add your site domain in Firebase Auth Authorized domains and use localhost instead of opening the file directly.";
+      return;
+    }
+
+    if (error?.code === "auth/operation-not-allowed") {
+      status.textContent = "Google sign-in is not enabled for this Firebase project. Turn on Google in Firebase Authentication -> Sign-in method.";
+      return;
+    }
+
     status.textContent = "Error saving lot: " + (error.message || error);
   }
 });

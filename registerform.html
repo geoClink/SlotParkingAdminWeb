@@ -1,48 +1,38 @@
-    <label>
-      Name
-      <input id="name" type="text" required />
-    </label>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Register Parking Lot</title>
+</head>
+<body>
+  <h1>Register Parking Lot</h1>
+
+  <form id="garageForm">
+    <label for="name">Name</label>
+    <input id="name" type="text" required />
     <br><br>
 
-    <label>
-      Address
-      <input id="address" type="text" required />
-    </label>
+    <label for="address">Address</label>
+    <input id="address" type="text" required />
     <br><br>
 
-    <label>
-      Total Spots
-      <input id="totalSpots" type="number" required />
-    </label>
+    <label for="totalSpots">Total Spots</label>
+    <input id="totalSpots" type="number" min="1" step="1" required />
     <br><br>
 
-    <label>
-      Available Spots
-      <input id="availableSpots" type="number" required />
-    </label>
+    <label for="availableSpots">Available Spots</label>
+    <input id="availableSpots" type="number" min="0" step="1" required />
     <br><br>
 
-    <label>
-      Price Per Hour
-      <input id="pricePerHour" type="number" step="any" required />
-    </label>
-    <br><br>
-
-    <button type="submit">Save Lot</button>
-      <input id="totalSpots" type="number" required />
-    </label>
-    <br><br>
-
-    <label>
-      Spots Available
-      <input id="spotsAvailable" type="number" required />
-    </label>
+    <label for="pricePerHour">Price Per Hour</label>
+    <input id="pricePerHour" type="number" min="0" step="0.01" required />
     <br><br>
 
     <button type="submit">Save Lot</button>
   </form>
 
-  <p id="status"></p>
+  <p id="status" aria-live="polite"></p>
 
   <script type="module" src="./app.js"></script>
 </body>
