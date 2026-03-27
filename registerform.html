@@ -4,36 +4,63 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Register Parking Lot</title>
+  <link rel="stylesheet" href="./style.css?v=lots-list-1" />
 </head>
 <body>
   <h1>Register Parking Lot</h1>
 
-  <form id="garageForm">
+  <section id="authSection" class="panel">
+    <h2>Sign In</h2>
+    <label for="authEmail">Email</label><br>
+    <input class="text-input" id="authEmail" type="email" autocomplete="email" /><br><br>
+    <label for="authPassword">Password</label><br>
+    <input class="text-input" id="authPassword" type="password" autocomplete="current-password" /><br><br>
+    <div class="auth-actions">
+      <button class="auth-btn auth-btn--email" type="button" onclick="signUpWithEmail()">Sign Up with Email</button>
+      <button class="auth-btn auth-btn--apple" type="button" onclick="signInWithApple()">Sign In with Apple</button>
+      <button class="auth-btn auth-btn--google" type="button" onclick="signInWithGoogle()">Sign in with Google</button>
+    </div>
+    <p id="authStatus" aria-live="polite"></p>
+  </section>
+
+  <form id="garageForm" class="panel" hidden>
+    <section id="sessionSection" class="session-bar">
+      <p>Signed in as <strong id="sessionUserEmail"></strong></p>
+      <button id="logoutButton" class="secondary-btn" type="button" onclick="handleLogout(event)">Log Out</button>
+      <p id="logoutStatus" aria-live="polite"></p>
+    </section>
+
     <label for="name">Name</label>
-    <input id="name" type="text" required />
+    <input class="text-input" id="name" type="text" required />
     <br><br>
 
     <label for="address">Address</label>
-    <input id="address" type="text" required />
+    <input class="text-input" id="address" type="text" required />
     <br><br>
 
     <label for="totalSpots">Total Spots</label>
-    <input id="totalSpots" type="number" min="1" step="1" required />
+    <input class="text-input" id="totalSpots" type="number" min="1" step="1" required />
     <br><br>
 
     <label for="availableSpots">Available Spots</label>
-    <input id="availableSpots" type="number" min="0" step="1" required />
+    <input class="text-input" id="availableSpots" type="number" min="0" step="1" required />
     <br><br>
 
     <label for="pricePerHour">Price Per Hour</label>
-    <input id="pricePerHour" type="number" min="0" step="0.01" required />
+    <input class="text-input" id="pricePerHour" type="number" min="0" step="0.01" required />
     <br><br>
 
-    <button type="submit">Save Lot</button>
+    <button class="primary-btn" type="submit">Save Lot</button>
   </form>
+
+  <section id="registeredLotsSection" class="panel" hidden>
+    <h2>Registered Lots</h2>
+    <p id="registeredLotsStatus" aria-live="polite"></p>
+    <div id="registeredLotsList" class="lots-list"></div>
+  </section>
 
   <p id="status" aria-live="polite"></p>
 
-  <script type="module" src="./app.js"></script>
+  <script type="module" src="./app.js?v=lots-list-1"></script>
 </body>
 </html>
