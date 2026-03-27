@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Register Parking Lot</title>
-  <link rel="stylesheet" href="./style.css?v=lots-list-1" />
+  <link rel="stylesheet" href="./style.css?v=geoapify-1" />
 </head>
 <body>
   <h1>Register Parking Lot</h1>
@@ -35,7 +35,12 @@
     <br><br>
 
     <label for="address">Address</label>
-    <input class="text-input" id="address" type="text" required />
+    <input class="text-input" id="address" type="text" autocomplete="street-address" required />
+    <div id="addressSuggestions" class="address-suggestions" hidden></div>
+    <div class="address-actions">
+      <button id="validateAddressButton" class="secondary-btn" type="button">Validate Address</button>
+    </div>
+    <p id="addressStatus" aria-live="polite"></p>
     <br><br>
 
     <label for="totalSpots">Total Spots</label>
@@ -61,6 +66,6 @@
 
   <p id="status" aria-live="polite"></p>
 
-  <script type="module" src="./app.js?v=lots-list-1"></script>
+  <script type="module" src="./app.js?v=geoapify-1"></script>
 </body>
 </html>

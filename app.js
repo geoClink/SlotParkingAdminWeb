@@ -4,9 +4,11 @@ import {
   collection,
   doc,
   getDocs,
-  setDoc,
+  query,
   serverTimestamp,
-  GeoPoint
+  GeoPoint,
+  where,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 import {
   getAuth,
@@ -36,15 +38,27 @@ const isFileProtocol = window.location.protocol === "file:";
 
 const form = document.getElementById("garageForm");
 const status = document.getElementById("status");
+const geoapifyApiKey = "3ce85642e3ae4b1387ce2949d50dceb6";
 const authSection = document.getElementById("authSection");
 const authStatus = document.getElementById("authStatus");
 const sessionSection = document.getElementById("sessionSection");
 const sessionUserEmail = document.getElementById("sessionUserEmail");
 const logoutButton = document.getElementById("logoutButton");
 const logoutStatus = document.getElementById("logoutStatus");
+const addressInput = document.getElementById("address");
+const addressSuggestions = document.getElementById("addressSuggestions");
+const validateAddressButton = document.getElementById("validateAddressButton");
+const addressStatus = document.getElementById("addressStatus");
 const registeredLotsSection = document.getElementById("registeredLotsSection");
 const registeredLotsStatus = document.getElementById("registeredLotsStatus");
 const registeredLotsList = document.getElementById("registeredLotsList");
+let validatedAddressResult = null;
+let addressSuggestionsAbortController = null;
+let addressSuggestionsDebounce = null;
+
+function setAddressFeedback(message) {
+  if (addressStatus) addressStatus.textContent = message;
+}
 
 function setLogoutFeedback(message) {
   if (logoutStatus) logoutStatus.textContent = message;
@@ -53,6 +67,186 @@ function setLogoutFeedback(message) {
 
 function normalizeAddress(address) {
   return address.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function getAddressIndexId(normalizedAddress) {
+  return encodeURIComponent(normalizedAddress);
+}
+
+function hasGeoapifyKey() {
+  return geoapifyApiKey && geoapifyApiKey !== "YOUR_GEOAPIFY_API_KEY";
+}
+
+function buildGeoapifyAutocompleteUrl(text, limit = 5) {
+  const requestUrl = new URL("https://api.geoapify.com/v1/geocode/autocomplete");
+  requestUrl.searchParams.set("text", text);
+  requestUrl.searchParams.set("format", "json");
+  requestUrl.searchParams.set("filter", "countrycode:us");
+  requestUrl.searchParams.set("limit", String(limit));
+  requestUrl.searchParams.set("apiKey", geoapifyApiKey);
+  return requestUrl;
+}
+
+function normalizeGeoapifyResults(payload) {
+  const results = payload?.results || [];
+  return results
+    .filter((result) => result?.formatted && result?.lat && result?.lon)
+    .map((result) => ({
+      address: result.formatted,
+      latitude: Number(result.lat),
+      longitude: Number(result.lon),
+      resultType: result.result_type || "unknown"
+    }));
+}
+
+function hideAddressSuggestions() {
+  if (addressSuggestions) {
+    addressSuggestions.hidden = true;
+    addressSuggestions.innerHTML = "";
+  }
+}
+
+function selectAddressSuggestion(result) {
+  validatedAddressResult = result;
+  addressInput.value = result.address;
+  hideAddressSuggestions();
+  setAddressFeedback("Address selected.");
+}
+
+function renderAddressSuggestions(results) {
+  if (!addressSuggestions) {
+    return;
+  }
+
+  addressSuggestions.innerHTML = "";
+
+  if (!results.length) {
+    hideAddressSuggestions();
+    return;
+  }
+
+  results.forEach((result) => {
+    const suggestionButton = document.createElement("button");
+    suggestionButton.type = "button";
+    suggestionButton.className = "address-suggestion";
+    suggestionButton.textContent = result.address;
+    suggestionButton.addEventListener("click", () => {
+      selectAddressSuggestion(result);
+    });
+    addressSuggestions.appendChild(suggestionButton);
+  });
+
+  addressSuggestions.hidden = false;
+}
+
+function clearValidatedAddress() {
+  validatedAddressResult = null;
+  if (addressInput.value.trim()) {
+    setAddressFeedback("Choose a suggested address or click Validate Address.");
+  } else {
+    setAddressFeedback("Start typing an address.");
+  }
+}
+
+async function fetchAddressSuggestions(searchText) {
+  if (!hasGeoapifyKey()) {
+    hideAddressSuggestions();
+    setAddressFeedback("Add your Geoapify API key in app.js to enable address suggestions.");
+    return;
+  }
+
+  if (searchText.length < 3) {
+    hideAddressSuggestions();
+    return;
+  }
+
+  if (addressSuggestionsAbortController) {
+    addressSuggestionsAbortController.abort();
+  }
+
+  addressSuggestionsAbortController = new AbortController();
+
+  try {
+    const response = await fetch(buildGeoapifyAutocompleteUrl(searchText).toString(), {
+      signal: addressSuggestionsAbortController.signal,
+      headers: {
+        Accept: "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error("Could not load address suggestions.");
+    }
+
+    const results = normalizeGeoapifyResults(await response.json());
+    renderAddressSuggestions(results);
+  } catch (error) {
+    if (error.name === "AbortError") {
+      return;
+    }
+
+    hideAddressSuggestions();
+    console.error("Address suggestions failed", error);
+  }
+}
+
+async function validateAddress() {
+  const address = addressInput.value.trim();
+
+  if (!address) {
+    validatedAddressResult = null;
+    setAddressFeedback("Enter an address first.");
+    return null;
+  }
+
+  validateAddressButton.disabled = true;
+  setAddressFeedback("Validating address...");
+
+  try {
+    if (!hasGeoapifyKey()) {
+      throw new Error("Missing Geoapify API key.");
+    }
+
+    const response = await fetch(buildGeoapifyAutocompleteUrl(address, 1).toString(), {
+      headers: {
+        Accept: "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error("Address lookup failed.");
+    }
+
+    const results = normalizeGeoapifyResults(await response.json());
+    const firstResult = results[0];
+
+    if (!firstResult) {
+      throw new Error("No matching address found.");
+    }
+
+    selectAddressSuggestion(firstResult);
+    setAddressFeedback("Address validated.");
+    return validatedAddressResult;
+  } catch (error) {
+    validatedAddressResult = null;
+    setAddressFeedback("Could not validate that address. Choose a suggestion or check your Geoapify API key.");
+    console.error("Address validation failed", error);
+    return null;
+  } finally {
+    validateAddressButton.disabled = false;
+  }
+}
+
+function generateUuid() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
 }
 
 function formatPrice(pricePerHour) {
@@ -90,11 +284,15 @@ function renderRegisteredLots(lots) {
     details.className = "lot-card__meta";
     details.textContent = `${lot.availableSpots}/${lot.totalSpots} spots available • ${formatPrice(Number(lot.pricePerHour || 0))}/hr`;
 
+    const uuidLine = document.createElement("p");
+    uuidLine.className = "lot-card__uuid";
+    uuidLine.textContent = `UUID: ${lot.uuid || lot.id}`;
+
     const statusLine = document.createElement("p");
     statusLine.className = "lot-card__status";
     statusLine.textContent = `Status: ${lot.status || "pending"}`;
 
-    lotCard.append(title, addressLine, details, statusLine);
+    lotCard.append(title, addressLine, details, uuidLine, statusLine);
     registeredLotsList.appendChild(lotCard);
   });
 }
@@ -111,10 +309,11 @@ async function loadRegisteredLots() {
   registeredLotsStatus.textContent = "Loading registered lots...";
 
   try {
-    const lotsSnapshot = await getDocs(collection(db, "lots"));
+    const lotsSnapshot = await getDocs(
+      query(collection(db, "lots"), where("ownerId", "==", auth.currentUser.uid))
+    );
     const userLots = lotsSnapshot.docs
       .map((lotDoc) => ({ id: lotDoc.id, ...lotDoc.data() }))
-      .filter((lot) => lot.ownerId === auth.currentUser.uid)
       .sort((a, b) => {
         const aTime = a.updatedAt?.seconds || 0;
         const bTime = b.updatedAt?.seconds || 0;
@@ -246,10 +445,13 @@ onAuthStateChanged(auth, (user) => {
     form.reset();
     clearRegisteredLots();
     registeredLotsStatus.textContent = "";
+    validatedAddressResult = null;
+    hideAddressSuggestions();
+    setAddressFeedback("");
   }
 });
 
-if (!form || !status || !authSection || !authStatus || !sessionSection || !sessionUserEmail || !logoutButton || !logoutStatus || !registeredLotsSection || !registeredLotsStatus || !registeredLotsList) {
+if (!form || !status || !authSection || !authStatus || !sessionSection || !sessionUserEmail || !logoutButton || !logoutStatus || !addressInput || !addressSuggestions || !validateAddressButton || !addressStatus || !registeredLotsSection || !registeredLotsStatus || !registeredLotsList) {
   throw new Error("Required page elements were not found.");
 }
 
@@ -261,6 +463,29 @@ window.signInWithEmail = signInWithEmail;
 window.handleLogout = handleLogout;
 
 logoutButton.addEventListener("click", handleLogout);
+validateAddressButton.addEventListener("click", validateAddress);
+addressInput.addEventListener("input", () => {
+  clearValidatedAddress();
+
+  if (addressSuggestionsDebounce) {
+    window.clearTimeout(addressSuggestionsDebounce);
+  }
+
+  addressSuggestionsDebounce = window.setTimeout(() => {
+    fetchAddressSuggestions(addressInput.value.trim());
+  }, 250);
+});
+addressInput.addEventListener("focus", () => {
+  if (addressInput.value.trim().length >= 3) {
+    fetchAddressSuggestions(addressInput.value.trim());
+  }
+});
+document.addEventListener("click", (event) => {
+  if (event.target !== addressInput && !addressSuggestions.contains(event.target)) {
+    hideAddressSuggestions();
+  }
+});
+setAddressFeedback(hasGeoapifyKey() ? "Start typing and choose a suggested address." : "Add your Geoapify API key in app.js to enable address suggestions.");
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -274,25 +499,14 @@ form.addEventListener("submit", async (e) => {
       return;
     }
     const name = document.getElementById("name").value.trim();
-    const address = document.getElementById("address").value.trim();
-    const normalizedAddress = normalizeAddress(address);
+    const rawAddress = addressInput.value.trim();
+    const normalizedAddress = normalizeAddress(rawAddress);
     const totalSpots = Number.parseInt(document.getElementById("totalSpots").value, 10);
     const availableSpots = Number.parseInt(document.getElementById("availableSpots").value, 10);
     const pricePerHour = Number(document.getElementById("pricePerHour").value);
 
-    if (!name || !address) {
+    if (!name || !rawAddress) {
       status.textContent = "Please enter a lot name and address.";
-      return;
-    }
-
-    const existingLotsSnapshot = await getDocs(collection(db, "lots"));
-    const duplicateLot = existingLotsSnapshot.docs.find((lotDoc) => {
-      const existingAddress = lotDoc.data().addressNormalized || lotDoc.data().address || "";
-      return normalizeAddress(existingAddress) === normalizedAddress;
-    });
-
-    if (duplicateLot) {
-      status.textContent = "A parking lot with this address is already registered.";
       return;
     }
 
@@ -316,24 +530,30 @@ form.addEventListener("submit", async (e) => {
       return;
     }
 
-    // Geocode address to get latitude and longitude
-    const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`;
-    const geoResp = await fetch(geocodeUrl);
-    const geoData = await geoResp.json();
-    if (!geoData.length) {
-      status.textContent = "Could not geocode address. Please enter a valid address.";
+    const validatedLocation =
+      validatedAddressResult && normalizeAddress(validatedAddressResult.address) === normalizeAddress(rawAddress)
+        ? validatedAddressResult
+        : await validateAddress();
+
+    if (!validatedLocation) {
+      status.textContent = "Please validate the address before saving.";
       return;
     }
-    const latitude = parseFloat(geoData[0].lat);
-    const longitude = parseFloat(geoData[0].lon);
 
-    // Generate a unique lotId (could use name + timestamp or Firestore auto-id)
-    const lotId = name.replace(/\s+/g, "_").toLowerCase() + "_" + Date.now();
+    const address = validatedLocation.address;
+    const latitude = validatedLocation.latitude;
+    const longitude = validatedLocation.longitude;
+    const validatedNormalizedAddress = normalizeAddress(address);
 
-    await setDoc(doc(db, "lots", lotId), {
+    const lotId = generateUuid();
+    const addressIndexId = getAddressIndexId(validatedNormalizedAddress);
+    const batch = writeBatch(db);
+
+    batch.set(doc(db, "lots", lotId), {
+      uuid: lotId,
       name: name,
       address: address,
-      addressNormalized: normalizedAddress,
+      addressNormalized: validatedNormalizedAddress,
       location: new GeoPoint(latitude, longitude),
       totalSpots: totalSpots,
       availableSpots: availableSpots,
@@ -343,11 +563,28 @@ form.addEventListener("submit", async (e) => {
       updatedAt: serverTimestamp()
     });
 
+    batch.set(doc(db, "lotAddressIndex", addressIndexId), {
+      addressNormalized: validatedNormalizedAddress,
+      lotId: lotId,
+      ownerId: user.uid,
+      createdAt: serverTimestamp()
+    });
+
+    await batch.commit();
+
     status.textContent = "Lot saved successfully and is pending approval.";
     form.reset();
+    validatedAddressResult = null;
+    hideAddressSuggestions();
+    setAddressFeedback(hasGeoapifyKey() ? "Start typing and choose a suggested address." : "Add your Geoapify API key in app.js to enable address suggestions.");
     await loadRegisteredLots();
   } catch (error) {
     console.error(error);
+
+    if (error?.code === "permission-denied") {
+      status.textContent = "Save blocked by Firestore rules. This usually means the address is already registered or your rules need to allow owner access.";
+      return;
+    }
 
     status.textContent = "Error saving lot: " + (error.message || error);
   }
