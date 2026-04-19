@@ -3,7 +3,7 @@
 A web-based admin platform for registering and managing parking lots. Parking lot owners can sign in, register their lots with address validation and geocoding, and track spot availability and pricing.
 
 
-[Fontend Repo](https://github.com/geoClink/SlotParking/blob/main/README.md?plain=1)
+[Font End Repo](https://github.com/geoClink/SlotParking/blob/main/README.md?plain=1)
 ## Features
 
 - **Multi-provider authentication** — Sign in with Email/Password, Google, or Apple
